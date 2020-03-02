@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+import sys
+import traceback
+import json
+import requests
+import pydoc
+
+### CLASES ###
+class fcolor:
+    black = '\033[30m'
+    magenta = '\033[95m'
+    blue = '\033[94m'
+    green = '\033[92m'
+    cyan = '\033[96m'
+    yellow = '\033[93m'
+    red = '\033[91m'
+    clear = '\033[0m'
+    bold = '\033[1m'
+    underline = '\033[4m'
+
+class bcolor:
+    magenta = '\033[45m'
+    blue = '\033[104m'
+    green = '\033[42m' + fcolor.black
+    cyan = '\033[106m' + fcolor.black
+    yellow = '\033[42m'
+    red = '\033[101m'
+    clear = '\033[0m'
+
+
+### FUNCTIONS ###
+def get_json_from_api(query):
+    url = 'https://api.scryfall.com/cards/search'
+    #resp = requests.get(url=url,params='q=' + query)
+    resp = requests.get(url=url,params='q=' + query + format_set)
+    json = resp.json()
+    if json['object'] == 'error':
+        sys.exit(json['details'])
+
+    return json['data']
+
+def get_card(card):
+        ret=""
+        if 'card_faces' in card:
+            ret += (bcolor.green + (card['name'] if 'name' in card else card['all_parts'][0]['name']) + fcolor.clear) + '\n'
+            for side in card['card_faces']:
+                ret += ((4 * " ") + bcolor.cyan + side['name'] + ' ' +  side['mana_cost'] + fcolor.clear) + '\n'
+                ret += ((4 * " ") + ((side['type_line']) if 'type_line' in side else bcolor.red + 'Missing card type' + fcolor.clear ) +  ' ' + ('(' + (side['power'] + '/' + side['toughness'] + ')' ) if 'power' in side else '')) + '\n'
+                ret += ((4 * " ") + 'Oracle:') + '\n'
+                ret += ("\n".join((8 * " ") + i for i in side['oracle_text'].splitlines())) + '\n'
+                if 'loyalty' in side: ret += ((4 * " ") + 'Loyalty: ' + side['loyalty']) + '\n'
+
+        else:
+            ret += (bcolor.green + card['name'] + ' ' +  card['mana_cost'] + fcolor.clear) + '\n'
+            ret += (card['type_line'] +  ' ' + ('(' + (card['power'] + '/' + card['toughness'] + ')' ) if 'power' in card else '')) + '\n'
+            ret += ('Oracle:') + '\n'
+            ret += ("\n".join((4 * " ") + i for i in card['oracle_text'].splitlines())) + '\n'
+            if 'loyalty' in card: ret += ('Loyalty: ' + card['loyalty']) + '\n'
+
+        ret += ('Rarity: ' + card['rarity']) + '\n'
+        ret += ('Price: ' + (((card['prices']['usd'] or '') + ' USD', 'NA')[card['prices']['usd'] is None])) + '\n'
+        ret += ('Set: ' + card['set_name']) + '\n'
+        ret += ('Legal: [standard: ' + card['legalities']['standard'] + ', pioneer: ' + card['legalities']['pioneer'] + ', modern: ' + card['legalities']['modern'] + ', legacy: ' + card['legalities']['legacy'] + ']') + '\n'
+        ret += '\n\n'
+        #ret += ((50 * "=-") + "=") + '\n'
+        return ret
+
+### MAIN ###
+if len(sys.argv) <= 1: sys.exit('Please entery serach criteria')
+if sys.argv[1] == 'pre':
+    if len(sys.argv) <= 2: sys.exit('Please entery serach criteria for legacy')
+    format_set = ''
+    query = sys.argv[2]
+elif sys.argv[1] == 'legacy':
+    if len(sys.argv) <= 2: sys.exit('Please entery serach criteria for legacy')
+    format_set = '+f:legacy'
+    query = sys.argv[2]
+else:
+    format_set = '+f:modern'
+    query = sys.argv[1]
+cards = get_json_from_api(query)
+pager_data = (bcolor.magenta + (10 * "=") + ' Found ' + str(len(cards)) + ' cards ' + (10 * "=") + fcolor.clear) + '\n'
+for card in cards:
+    try:
+        pager_data+=get_card(card)
+    except Exception as e:
+        print(bcolor.red + 'Error with the following card' + fcolor.clear)
+        traceback.print_exc(file=sys.stdout)
+        conf = input('Do you want to see the card ? (y/n) [n] ... ') or 'n'
+        if conf == 'y':
+            pydoc.pager(json.dumps(card, indent=4))
+        sys.exit(1)
+
+pager_data = pager_data[:-2]
+pydoc.pager(pager_data)
